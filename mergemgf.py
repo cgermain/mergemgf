@@ -3,34 +3,51 @@ import os
 import sys
 import argparse
 
-parser = argparse.ArgumentParser(description="Merge 2 MGF files based on X coordinate criteria")
-parser.add_argument('ms2_file', action="store", help="Path to the MS2 mgf file.")
-parser.add_argument('ms3_file', action="store", help="Path to the MS3 mgf file.")
+parser = argparse.ArgumentParser(description="Merge 2 MGF files based on X coordinate criteria.")
+parser.add_argument('ms2_ms3_directory', action='store', help="The directory that has MS2/MS3 files in it.")
 
 MZ_CUTOFF = 140
 
 def main():
-	#TODO run on a folder
-	#TODO pull in each mgf file & check for ms2/ms3
 	arguments = parser.parse_args()
-	if not os.path.isfile(arguments.ms2_file):
-		print "Please check that the path to the ms2 file is correct."
+
+	if not os.path.isdir(arguments.ms2_ms3_directory):
+		print "Please check that you are passing in the MS2/MS3 directory."
 		return
-	if not os.path.isfile(arguments.ms3_file):
-		print "Please check that the path to the ms2 file is correct."
+
+	#get the full path to the MGF files
+	filenames = listdir_fullpath(arguments.ms2_ms3_directory)
+	mgf_files = [filename for filename in filenames if os.path.isfile(filename) and filename.endswith(".mgf")]
+
+	#the chunker and merging require an even number of MGF files
+	if len(mgf_files) % 2 == 0:
+		mgf_files.sort(key=str.lower)
+	else:
+		print "Directory must contain an even number of MGF files to merge."
 		return
-	ms2_file = arguments.ms2_file
-	ms3_file = arguments.ms3_file
-	
-	merge_result = merge_mgf_files(ms2_file, ms3_file)
 
-	#add _MS3 to the filename
-	merged_mgf_filename = ms2_file.split(".")[0].replace("MS2", "MS2_MS3")+".mgf"
+	#run through the pairs once to make sure the MS2/MS3 filenames match
+	for ms2_ms3_pair in chunker(mgf_files,2):
+		if ms2_ms3_file_pair_mismatch(ms2_ms3_pair):
+			print "MS2/MS3 file mismatch:"
+			print ms2_ms3_pair[0]
+			print ms2_ms3_pair[1]
+			print "Please check the file names."
+			return
+		if output_file_exists(ms2_ms3_pair):
+			print "Merged MS2/MS3 file already exists in directory."
+			print "Remove and rerun."
+			return
 
-	print "\nWriting merged MGF: " + merged_mgf_filename
+	#execute the merge and save the new MGF file for each MS2/MS3 pair
+	for ms2_ms3_pair in chunker(mgf_files,2):
+		merge_result = merge_mgf_files(ms2_ms3_pair[0], ms2_ms3_pair[1])
+		save_mgf_output(merge_result, ms2_ms3_pair[0])
+		print_merge_stats(merge_result)
+		del merge_result #attempt to free up memory
 
-	mgf.write(merge_result["merged_mgf"], output=merged_mgf_filename)
-	print_merge_stats(merge_result)
+	print "Merging complete"
+	return
 
 def merge_mgf_files(ms2_file, ms3_file):
 	ms2_count = 0
@@ -42,8 +59,8 @@ def merge_mgf_files(ms2_file, ms3_file):
 	#ms2 - so we have a total spectra count for the progress bar
 	#ms3 - so we don't have to read in repeatedly per ms2 spectra
 	merged_mgf = []
-	ms3_spectrum_list = []
 	ms2_spectrum_list = []
+	ms3_spectrum_list = []
 
 	print "Reading MS2 file: " + ms2_file
 	with mgf.read(ms2_file) as ms2_reader:
@@ -114,6 +131,41 @@ def write_progress_bar(current_count, total_count):
 	sys.stdout.write('Merging: [%s] %s%s \r' % (bar, percent_complete, '%'))
 	sys.stdout.flush()
 
+def listdir_fullpath(directory):
+	return [os.path.join(directory, filename) for filename in os.listdir(directory)]
+
+def chunker(sequence, size):
+	return (sequence[index:index + size] for index in xrange(0, len(sequence), size))
+
+#checking to make sure that the ms2 and ms3 filenames match properly
+def ms2_ms3_file_pair_mismatch(chunk):
+	ms2_file = chunk[0]
+	ms3_file = chunk[1]
+
+	try:	
+		return not ("MS2" in ms2_file and
+			"MS3" in ms3_file and
+			ms2_file.split("MS2")[0] == ms3_file.split("MS3")[0] and
+			"Node_02" in ms2_file.split("MS2")[1] and
+			"Node_05" in ms3_file.split("MS3")[1])
+	except:
+		return True
+
+def output_file_exists(chunk):
+	ms2_file = chunk[0]
+	ms3_file = chunk[1]
+
+	try:
+		return ("MS2_MS3" in ms2_file or "MS2_MS3" in ms3_file)
+	except:
+		return True
+
+def save_mgf_output(merge_result, ms2_file):
+	#add _MS3 to the filename
+	merged_mgf_filename = ms2_file.split(".")[0].replace("MS2", "MS2_MS3")+".mgf"
+	print "\nWriting merged MGF: " + merged_mgf_filename
+	mgf.write(merge_result["merged_mgf"], output=merged_mgf_filename)
+	
 def print_merge_stats(merge_result):
 	print "MS2 Count  : " + str(merge_result["ms2_count"])
 	print "MS3 Count  : " + str(merge_result["ms3_count"])
