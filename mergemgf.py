@@ -42,7 +42,7 @@ def main():
 	#execute the merge and save the new MGF file for each MS2/MS3 pair
 	for ms2_ms3_pair in chunker(mgf_files,2):
 		merge_result = merge_mgf_files(ms2_ms3_pair[0], ms2_ms3_pair[1])
-		save_mgf_output(merge_result, ms2_ms3_pair[0])
+		save_mgf_output(merge_result, ms2_ms3_pair[0], arguments.ms2_ms3_directory)
 		print_merge_stats(merge_result)
 		del merge_result #attempt to free up memory
 
@@ -145,9 +145,7 @@ def ms2_ms3_file_pair_mismatch(chunk):
 	try:	
 		return not ("MS2" in ms2_file and
 			"MS3" in ms3_file and
-			ms2_file.split("MS2")[0] == ms3_file.split("MS3")[0] and
-			"Node_02" in ms2_file.split("MS2")[1] and
-			"Node_05" in ms3_file.split("MS3")[1])
+			ms2_file.split("MS2")[0] == ms3_file.split("MS3")[0])
 	except:
 		return True
 
@@ -160,9 +158,17 @@ def output_file_exists(chunk):
 	except:
 		return True
 
-def save_mgf_output(merge_result, ms2_file):
-	#add _MS3 to the filename
-	merged_mgf_filename = ms2_file.split(".")[0].replace("MS2", "MS2_MS3")+".mgf"
+#TODO check if merged directory exists at the start
+
+def save_mgf_output(merge_result, ms2_file, ms2_ms3_directory):
+	#create merged directory and save renamed file out to it
+	base_name = os.path.basename(ms2_file).split("MS2")[0]
+	output_directory = os.path.join(ms2_ms3_directory, base_name+"_merged")
+
+	if not os.path.exists(output_directory):
+		os.makedirs(output_directory)
+	merged_mgf_filename = os.path.join(output_directory, base_name + "_MS2_MS3.mgf")
+	
 	print "\nWriting merged MGF: " + merged_mgf_filename
 	mgf.write(merge_result["merged_mgf"], output=merged_mgf_filename)
 	
@@ -173,3 +179,4 @@ def print_merge_stats(merge_result):
 
 if __name__ == "__main__":
 	main()
+	raw_input("press ENTER to exit")
