@@ -1,4 +1,5 @@
 from pyteomics import mgf
+from datetime import datetime
 import os
 import sys
 import argparse
@@ -7,6 +8,7 @@ parser = argparse.ArgumentParser(description="Merge 2 MGF files based on X coord
 parser.add_argument('ms2_ms3_directory', action='store', help="The directory that has MS2/MS3 files in it.")
 
 MZ_CUTOFF = 140
+TIME_FORMAT = "%Y-%m-%d_%H-%M-%S"
 
 def main():
 	arguments = parser.parse_args()
@@ -26,6 +28,8 @@ def main():
 		print "Directory must contain an even number of MGF files to merge."
 		return
 
+	timestamp = datetime.now().strftime(TIME_FORMAT)
+
 	#run through the pairs once to make sure the MS2/MS3 filenames match
 	for ms2_ms3_pair in chunker(mgf_files,2):
 		if ms2_ms3_file_pair_mismatch(ms2_ms3_pair):
@@ -38,11 +42,15 @@ def main():
 			print "Merged MS2/MS3 file already exists in directory."
 			print "Remove and rerun."
 			return
+		if os.path.isdir(generate_output_directory_name(ms2_ms3_pair[0], timestamp)):
+			print "Merged output directory already exists."
+			print "Remove and rerun."
+			return
 
 	#execute the merge and save the new MGF file for each MS2/MS3 pair
 	for ms2_ms3_pair in chunker(mgf_files,2):
 		merge_result = merge_mgf_files(ms2_ms3_pair[0], ms2_ms3_pair[1])
-		save_mgf_output(merge_result, ms2_ms3_pair[0], arguments.ms2_ms3_directory)
+		save_mgf_output(merge_result, ms2_ms3_pair[0], arguments.ms2_ms3_directory, timestamp)
 		print_merge_stats(merge_result)
 		del merge_result #attempt to free up memory
 
@@ -158,17 +166,13 @@ def output_file_exists(chunk):
 	except:
 		return True
 
-#TODO check if merged directory exists at the start
-
-def save_mgf_output(merge_result, ms2_file, ms2_ms3_directory):
+def save_mgf_output(merge_result, ms2_file, ms2_ms3_directory, timestamp):
 	#create merged directory and save renamed file out to it
-	base_name = os.path.basename(ms2_file).split("MS2")[0]
-	output_directory = os.path.join(ms2_ms3_directory, base_name+"_merged")
-
-	if not os.path.exists(output_directory):
+	output_directory = generate_output_directory_name(ms2_file, timestamp)
+	if not os.path.isdir(output_directory):
 		os.makedirs(output_directory)
-	merged_mgf_filename = os.path.join(output_directory, base_name + "_MS2_MS3.mgf")
-	
+
+	merged_mgf_filename = generate_output_merged_mgf_name(ms2_file, timestamp)
 	print "\nWriting merged MGF: " + merged_mgf_filename
 	mgf.write(merge_result["merged_mgf"], output=merged_mgf_filename)
 	
@@ -176,6 +180,18 @@ def print_merge_stats(merge_result):
 	print "MS2 Count  : " + str(merge_result["ms2_count"])
 	print "MS3 Count  : " + str(merge_result["ms3_count"])
 	print "Merged Count: " + str(merge_result["merged_count"])
+
+def generate_output_directory_name(ms2_file, timestamp):
+	directory_path = os.path.dirname(ms2_file)
+	output_directory = os.path.join(directory_path, "merged_MS2_MS3_" + timestamp)
+	return output_directory
+
+def generate_output_merged_mgf_name(ms2_file, timestamp):
+	directory_path = os.path.dirname(ms2_file)
+	base_name = os.path.basename(ms2_file).split("MS2")[0]
+	output_directory = generate_output_directory_name(ms2_file, timestamp)
+	merged_mgf_filename = os.path.join(output_directory, base_name + "_MS2_MS3.mgf")
+	return merged_mgf_filename
 
 if __name__ == "__main__":
 	main()
